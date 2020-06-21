@@ -4,7 +4,7 @@
 # Copyright 2019 Scott Shambarger
 
 """weewx driver for WeatherLink
-   Retries weather data from weatherlink.com for use in weewx
+   Download weather data from weatherlink.com for use in weewx
 
 To use this driver:
 
@@ -26,7 +26,8 @@ To use this driver:
 """
 
 from __future__ import print_function
-import httplib
+from six.moves import http_client
+import six
 import socket
 import struct
 import sys
@@ -35,7 +36,7 @@ import time
 import calendar
 import email.utils
 import datetime
-import urllib2
+from six.moves import urllib
 import json
 
 import weewx
@@ -44,7 +45,7 @@ import weewx.engine
 from weeutil.weeutil import to_int
 
 DRIVER_NAME = "WeatherLink"
-DRIVER_VERSION = "0.15"
+DRIVER_VERSION = "0.16"
 
 def loader(config_dict, engine):
     return WeatherLinkService(engine, config_dict)
@@ -219,7 +220,7 @@ class WeatherLink(weewx.drivers.AbstractDevice):
                 # remove unneeded sensors
                 for sensor in self._archive_extra:
                     if sensor not in self._extra_sensors:
-                        if record.has_key(sensor): del record[sensor]
+                        if sensor in record: del record[sensor]
                 logdbg("yielding: %s" % record)
                 yield record
             sidx += 52
@@ -390,7 +391,7 @@ class WeatherLink(weewx.drivers.AbstractDevice):
             packet = self.get_readings()
             if packet is None:
                 return False
-            sensor_list = [ v for v in packet.keys()
+            sensor_list = [ v for v in list(packet.keys())
                             if v in self._archive_extra ]
             # add non-loop values that are in archive
             if 'radiation' in sensor_list:
@@ -410,10 +411,10 @@ class WeatherLink(weewx.drivers.AbstractDevice):
             try:
                 if self._debug:
                     logdbg('get_url: %s' % url)
-                response = urllib2.urlopen(url)
+                response = urllib.request.urlopen(url)
                 return response.read()
-            except (urllib2.URLError, socket.error,
-                    httplib.BadStatusLine, httplib.IncompleteRead), e:
+            except (urllib.error.URLError, socket.error,
+                    http_client.BadStatusLine, http_client.IncompleteRead) as e:
                 logerr('download failed attempt %d of %d: %s'
                        % (count + 1, self._max_tries, e))
                 time.sleep(self._retry_wait)
@@ -451,7 +452,7 @@ class WeatherLink(weewx.drivers.AbstractDevice):
     # adapted from the implementation in the vantage driver
     def _unpack_archive_packet(self, raw_record_string):
         """Unpack a binary archive packet"""
-        packet_type = ord(raw_record_string[42])
+        packet_type = six.indexbytes(raw_record_string, 42)
         if packet_type == 0xff:
             archive_format = _rec_fmt_A
             data_types = _rec_types_A
@@ -463,7 +464,7 @@ class WeatherLink(weewx.drivers.AbstractDevice):
                    % packet_type);
             return None
         data_tuple = archive_format.unpack(raw_record_string)
-        raw_record = dict(zip(data_types, data_tuple))
+        raw_record = dict(list(zip(data_types, data_tuple)))
         packet = {
             'dateTime': self._archive_datetime(raw_record['date_stamp'],
                                                raw_record['time_stamp']),
@@ -621,8 +622,8 @@ _rec_format_B = [
     ('soilMoist4',  'B')
 ]
 
-_rec_types_A, _fmt_A = zip(*_rec_format_A)
-_rec_types_B, _fmt_B = zip(*_rec_format_B)
+_rec_types_A, _fmt_A = list(zip(*_rec_format_A))
+_rec_types_B, _fmt_B = list(zip(*_rec_format_B))
 _rec_fmt_A = struct.Struct('<' + ''.join(_fmt_A))
 _rec_fmt_B = struct.Struct('<' + ''.join(_fmt_B))
 
@@ -738,7 +739,7 @@ def _parse_loop(jdata):
 def _map_floats(jdata, mapping):
     """Map keys to new names and convert to float"""
     values = {}
-    for k1,k2 in mapping.items():
+    for k1,k2 in list(mapping.items()):
         v = jdata.get(k1)
         if v:
             values[k2] = float(v)
@@ -903,10 +904,10 @@ class WeatherLinkConfEditor(weewx.drivers.AbstractConfEditor):
 [WeatherLink]
     # This section is for retrieving data from weatherlink.com.
 
-    # Device ID
+    # Device ID (can be found on the WeatherLink Device Info page)
     username = 001D0A00DE6A
 
-    # WeatherLink password
+    # WeatherLink password (weatherlink.com account password)
     password = DEMO
 
     # The following are optional:
@@ -923,11 +924,11 @@ class WeatherLinkConfEditor(weewx.drivers.AbstractConfEditor):
     # incorrect.
     ######################################################
 
-    # Rain bucket size: 0 = 0.01in, 1 = 0.2mm, 2 = 0.1mm
-    #rain_bucket_type = <FROM API>
+    # Rain bucket size: 0 = 0.01in, 1 = 0.2mm, 2 = 0.1mm, -1 = <FROM API>
+    #rain_bucket_type = -1
 
-    # Station archive interval (secs)
-    #archive_interval = <FROM API>
+    # Station archive interval (secs, 0 = <FROM API>)
+    #archive_interval = 0
 
     # Station timezone.  This can be named (eg 'US/Pacific'),
     # an fixed offset (eg '-480'), or 'localtime' to use the
