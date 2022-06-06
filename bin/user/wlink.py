@@ -31,7 +31,6 @@ import six
 import socket
 import struct
 import sys
-import syslog
 import time
 import calendar
 import email.utils
@@ -45,7 +44,7 @@ import weewx.engine
 from weeutil.weeutil import to_int
 
 DRIVER_NAME = "WeatherLink"
-DRIVER_VERSION = "0.16"
+DRIVER_VERSION = "0.17"
 
 def loader(config_dict, engine):
     return WeatherLinkService(engine, config_dict)
@@ -62,20 +61,61 @@ if weewx.__version__ < "3":
     raise weewx.UnsupportedFeature("weewx 3 is required, found %s"
                                    % weewx.__version__)
 
-def logmsg(dst, msg):
+try:
+    # Test for new-style weewx logging by trying to import weeutil.logger
+    import weeutil.logger
+    import logging
+    log = logging.getLogger(__name__)
+
+    def loginit():
+        return
+
+    def _logdbg(msg):
+        log.debug(msg)
+
+    def _loginf(msg):
+        log.info(msg)
+
+    def _logerr(msg):
+        log.error(msg)
+
+except ImportError:
+    # Old-style weewx logging
+    import syslog
+
+    def loginit():
+        syslog.openlog('wlink', syslog.LOG_PID | syslog.LOG_CONS)
+        syslog.setlogmask(syslog.LOG_UPTO(syslog.LOG_DEBUG))
+
+    def _logmsg(level, msg):
+        syslog.syslog(level, 'wlink: %s' % msg)
+
+    def _logdbg(msg):
+        _logmsg(syslog.LOG_DEBUG, msg)
+
+    def _loginf(msg):
+        _logmsg(syslog.LOG_INFO, msg)
+
+    def _logerr(msg):
+        _logmsg(syslog.LOG_ERR, msg)
+
+def logdbg(msg):
+    if DRIVER_CONSOLE_DEBUG:
+        print('debug: %s' % msg)
+    else:
+        _logdbg(msg)
+
+def loginf(msg):
     if DRIVER_CONSOLE_DEBUG:
         print(msg)
     else:
-        syslog.syslog(dst, 'wlink: %s' % msg)
-
-def logdbg(msg):
-    logmsg(syslog.LOG_DEBUG, msg)
-
-def loginf(msg):
-    logmsg(syslog.LOG_INFO, msg)
+        _loginf(msg)
 
 def logerr(msg):
-    logmsg(syslog.LOG_ERR, msg)
+    if DRIVER_CONSOLE_DEBUG:
+        print('err: %s' % msg)
+    else:
+        _logerr(msg)
 
 # =============================================================================
 #                      Decoding routines
@@ -316,12 +356,16 @@ class WeatherLink(weewx.drivers.AbstractDevice):
         if self._apitoken:
             url += "&apiToken=%s" % self._apitoken
         data = self._get_url(url)
-        if data is None or data == "Invalid Request!":
+        if data is None:
+            return None
+        if data == b"Invalid Request!":
+            logerr('server returned "Invalid Request!" for %s api (incorrect password/apitoken?)' % mode)
             return None
         try:
             jdata = json.loads(data)
         except (TypeError, ValueError):
-            raise weewx.WeeWxIOError("failed to parse %s json values" % mode)
+            logerr('failed to parse %s json values' % mode)
+            return None
         if self._debug:
             logdbg('%s' % _json_pretty(jdata))
         return jdata
@@ -1031,8 +1075,7 @@ if __name__ == "__main__":
     if options.debug:
         DRIVER_CONSOLE_DEBUG = True
     else:
-        syslog.openlog('wlink', syslog.LOG_PID | syslog.LOG_CONS)
-        syslog.setlogmask(syslog.LOG_UPTO(syslog.LOG_DEBUG))
+        loginit()
 
     if options.version:
         print("Weatherlink driver version %s" % DRIVER_VERSION)

@@ -1,3 +1,7 @@
+0.17 05jun2022
+* fixed invalid request handling
+* updated logging
+
 0.16 20jun2020
 * added python3 support
 * updated install instructions
