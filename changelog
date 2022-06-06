@@ -1,3 +1,19 @@
+0.17 05jun2022
+* fixed invalid request handling
+* updated logging
+
+0.16 20jun2020
+* added python3 support
+* updated install instructions
+
+0.15 20jun2020
+* query LOOP packet from weatherlink JSON api
+* retrieve station settings from StationStatus api
+* added support for wee_config --reconfigure
+* added support for wee_device (--info and --current)
+* added wlink.py arguments for testing
+* added config for extra sensors
+
 0.14 29jan2018
 * protect against non-float values when parsing for floats
 

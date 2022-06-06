@@ -10,7 +10,7 @@ def loader():
 class WeatherLinkInstaller(ExtensionInstaller):
     def __init__(self):
         super(WeatherLinkInstaller, self).__init__(
-            version="0.14",
+            version="0.16",
             name='wlink',
             description='driver that collects data from weatherlink.com',
             author="Matthew Wall",
